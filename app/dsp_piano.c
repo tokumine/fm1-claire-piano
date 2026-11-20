@@ -45,7 +45,8 @@ static float st_eps[PIANO_NSTRUCT], st_dec[PIANO_NSTRUCT], st_gain[PIANO_NSTRUCT
 static uint32_t mech_np_pos;
 static float mech_env, mech_mul;
 static float string_rms_sq;
-
+static float lim_env, lim_gain;
+static uint32_t lim_hold;
 /* Sympathetic open strings + early reflections + 4-line Hadamard FDN hall */
 #define SYM_LEN0 1319u
 #define SYM_LEN1 1747u
@@ -273,7 +274,9 @@ void dsp_piano_init(void)
     mech_env = 0.0f;
     mech_mul = fm_expf(-1.0f / (0.045f * PIANO_FS));
     string_rms_sq = 0.0f;
-
+    lim_env = 0.0f;
+    lim_gain = 1.0f;
+    lim_hold = 0u;
     for (i = 0; i < 2u; i++) {
         tilt_lp[i] = 0.0f;
         spk_hpf_x[i] = spk_hpf_y[i] = 0.0f;
@@ -393,11 +396,12 @@ void dsp_piano_note_on(uint8_t pitch, uint8_t vel, uint8_t role, uint8_t soft, c
                 float phi0 = (k < coh_lim) ? 0.0f : (rng_uni() * FM_TWO_PI);
                 float s0 = fm_sinf(phi0);
                 float c0 = fm_cosf(phi0);
-                float denom = fm_sqrtf(fm_maxf(0.05f, 1.0f - 0.25f * eps * eps));
+                float cos_h = fm_sqrtf(fm_maxf(0.04f, 1.0f - 0.25f * eps * eps));
+                /* Exact unit-amplitude Magic-Circle state: u_0 = sin(phi0), v_0 = cos(phi0 + w/2) */
                 v->mc_base_eps[k] = eps;
                 v->mc_eps[k] = eps;
                 v->mc_u[k] = s0;
-                v->mc_v[k] = (c0 - 0.5f * eps * s0) / denom;
+                v->mc_v[k] = c0 * cos_h - 0.5f * eps * s0;
             }
 
             {
@@ -457,9 +461,10 @@ void dsp_piano_note_on(uint8_t pitch, uint8_t vel, uint8_t role, uint8_t soft, c
                     float eps = 2.0f * fm_sinf(FM_PI * fs / PIANO_FS);
                     float phi = rng_uni() * FM_TWO_PI;
                     float s0 = fm_sinf(phi), c0 = fm_cosf(phi);
+                    float cos_h = fm_sqrtf(fm_maxf(0.04f, 1.0f - 0.25f * eps * eps));
                     v->ph_eps[k] = eps;
                     v->ph_u[k] = s0;
-                    v->ph_v[k] = (c0 - 0.5f * eps * s0) / fm_sqrtf(fm_maxf(0.05f, 1.0f - 0.25f * eps * eps));
+                    v->ph_v[k] = c0 * cos_h - 0.5f * eps * s0;
                     v->ph_amp[k] = a_ij;
                     v->ph_dec_blk[k] = db_per_sec_blk((pk->pr1[ia] + pk->pr1[ib]) * decay_scale, blk_n);
                 }
@@ -596,6 +601,19 @@ void dsp_piano_shed(void)
     }
 }
 
+static inline __attribute__((always_inline)) float ram_sqrtf(float x)
+{
+    fm_bits_t b;
+    float y;
+    if (x <= 0.0f) return 0.0f;
+    b.f = x;
+    b.u = 0x5F375A86u - (b.u >> 1);
+    y = b.f;
+    y = y * (1.5f - 0.5f * x * y * y);
+    y = y * (1.5f - 0.5f * x * y * y);
+    return x * y;
+}
+
 PLAT_RAM_CODE static void render_voice_range(uint32_t v0, uint32_t v1, float *out, uint32_t n)
 {
     uint32_t i, vi, k;
@@ -661,7 +679,23 @@ PLAT_RAM_CODE static void render_voice_range(uint32_t v0, uint32_t v1, float *ou
 
             u = v->mc_u[k];
             vv = v->mc_v[k];
-            eps = v->mc_base_eps[k] * drift_mul;
+            {
+                float eps0 = v->mc_base_eps[k];
+                float c2 = 1.0f - 0.25f * eps0 * eps0;
+                eps = eps0 * (1.0f + (drift_mul - 1.0f) * c2);
+                if (eps > 1.92f) eps = 1.92f;
+                /* Re-normalize exact Magic-Circle invariant u^2 + v^2 + eps*u*v = 1 - 0.25*eps^2 */
+                if (eps != v->mc_eps[k]) {
+                    float inv_e = u * u + vv * vv + eps * u * vv;
+                    float tgt_e = 1.0f - 0.25f * eps * eps;
+                    if (inv_e > 1e-12f) {
+                        float sc = ram_sqrtf(tgt_e / inv_e);
+                        u *= sc;
+                        vv *= sc;
+                    }
+                    v->mc_eps[k] = eps;
+                }
+            }
             {
                 float *dst = blk_ab[k & 1u];
                 for (i = 0; i < n; i++) {
@@ -885,8 +919,33 @@ PLAT_RAM_CODE static void mix_stage_ram(int32_t *lr, uint32_t n, int hp,
             y_r = hp1_r;
         }
 
-        y_l = soft_limit(y_l, hp == 1 ? 0.76f : 0.68f);
-        y_r = soft_limit(y_r, hp == 1 ? 0.76f : 0.68f);
+        /* 6. Transparent linked-stereo Peak-Hold Envelope Limiter (prevents hard/IMD treble clipping) */
+        {
+            const float thresh = (hp == 1) ? 0.72f : 0.66f;
+            float ax = y_l < 0.0f ? -y_l : y_l;
+            float ay = y_r < 0.0f ? -y_r : y_r;
+            float pk = ax > ay ? ax : ay;
+            float g_tgt;
+            if (pk >= lim_env) {
+                lim_env = pk;
+                lim_hold = 128u;
+            } else if (lim_hold > 0u) {
+                lim_hold--;
+            } else {
+                lim_env = pk + (lim_env - pk) * 0.99984f; /* ~140 ms smooth release */
+            }
+            g_tgt = (lim_env > thresh) ? (thresh / lim_env) : 1.0f;
+            if (g_tgt < lim_gain) {
+                lim_gain = g_tgt;                         /* instantaneous peak catch: zero overshoot */
+            } else {
+                lim_gain += (g_tgt - lim_gain) * 0.0015f; /* clickless smooth recovery */
+            }
+            y_l *= lim_gain;
+            y_r *= lim_gain;
+            /* Safety ceiling (unreachable during normal play, guards against extreme edge spikes) */
+            y_l = soft_limit(y_l, 0.84f);
+            y_r = soft_limit(y_r, 0.84f);
+        }
 
         if ((i & 7u) == 0u) {
             int32_t sv = (int32_t)((y_l + y_r) * 280.0f);
@@ -920,7 +979,7 @@ void dsp_piano_render(int32_t *lr, uint32_t n, uint32_t master_q12, const piano_
         PLAT_FAR(render_voice_range)(half, PIANO_MAX_VOICES, buf_c1, n);
 
     hp = plat_headphones();
-    gain_target = ((float)master_q12 / 4096.0f) * (hp == 1 ? 5600000.0f : 4300000.0f);
+    gain_target = ((float)master_q12 / 4096.0f) * (hp == 1 ? 4600000.0f : 3800000.0f);
 
     {
         static const float ROOM_FB[4]  = {0.48f, 0.65f, 0.79f, 0.87f};
