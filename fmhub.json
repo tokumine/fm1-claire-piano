@@ -2,8 +2,7 @@
   "what": "A physical-modal concert grand piano for the FM-1: 16 stiff-string partials per voice, 3-string unison beating, soundboard and bridge resonance, damper pedal physics, 87 classical pieces, Tap Pianist mode where any key plays the score at your touch, chord mode, and a 4-slot recorder.",
   "author": "Simon Tokumine",
   "kinds": ["synth"],
-  "play": "https://tokumine.github.io/fm1-claire-piano/emu/",
-  "cheat": "https://tokumine.github.io/fm1-claire-piano/manual/",
+  "cheat": "https://github.com/tokumine/fm1-claire-piano/blob/main/app/docs/MANUAL.md",
   "image": "docs/card.png",
   "color": "#E85D4A",
   "sounds": "none – all synthesised"
