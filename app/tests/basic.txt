@@ -1,0 +1,94 @@
+# Host simulator test for CLAIR FM v2 (Pure FM Piano + Chord Mode + Tap Pianist)
+wait 600
+expect song 0
+expect page 0
+expect scene 0
+expect key_mode 0
+
+# Pure FM Grand Piano on keys in default PIANO mode
+key 7 down
+wait 150
+expect voices >=1
+key 7 up
+wait 100
+
+# Start Pianist playing Clair de lune (first note at 1.75s)
+tap PLAY
+wait 2100
+shot stage_play.png
+expect mode 1
+expect voices >=1
+
+# Switch to Chopin (cat 2) & stop for Tap Pianist test
+turn ALGO 1
+wait 30
+turn ALGO 1
+wait 30
+expect cat 2
+expect mode 0
+
+# Toggle Tap Pianist with ARP button (key_mode = 2), tap 3 times to play score chords!
+tap ARP
+wait 60
+expect key_mode 2
+shot tap_pianist.png
+wav tap_pianist.wav
+key 7 down
+wait 200
+expect voices >=1
+expect note_idx >=1
+key 7 up
+wait 120
+key 9 down
+wait 200
+key 9 up
+wait 120
+key 12 down
+wait 250
+key 12 up
+wait 150
+wavstop
+expect peak_db_min -35
+expect peak_db_max -3
+
+# Open KEYS deck (LFO), switch to Piano CHORD mode (K1 -> 1), test modifier LOCK & momentary HOLD
+tap LFO
+wait 80
+expect page 3
+tap LFO
+wait 80
+expect key_mode 1
+key 4 down
+wait 80
+key 4 up
+wait 80
+expect mods 16
+shot deck_keys_chord.png
+key 6 down
+wait 50
+key 12 down
+wait 250
+expect mods 80
+expect voices >=3
+key 12 up
+key 6 up
+wait 50
+expect mods 16
+
+# BODY & HALL decks
+tap SEL
+wait 80
+expect page 1
+turn K1 1
+expect lid 3
+tap ENV
+wait 80
+expect page 2
+
+# Stop & save
+tap SEQ
+wait 80
+expect mode 0
+tap SAVE
+wait 80
+expect dirty 0

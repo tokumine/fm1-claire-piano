@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "id": "clair_piano",
+  "name": "Clair Piano",
+  "author": "Simon Tokumine",
+  "license": "MPL-2.0",
+  "tagline": "Physical-modal grand piano, chord keyboard & tap pianist",
+  "description": "Dual-core 16-partial stiff-string modal grand piano with soundboard and bridge resonance, damper and pedal physics, 87 public-domain classical pieces, Tap Pianist mode, one-finger Piano Chord mode, and 4-slot live song recorder.",
+  "tags": ["synth", "chords", "sequencer"],
+  "install": "https://tokumine.github.io/fm1-claire-piano/install/",
+  "site": "https://tokumine.github.io/fm1-claire-piano/",
+  "source": "https://github.com/tokumine/fm1-claire-piano",
+  "screenshot": "docs/card.png",
+  "hardware": {
+    "models": ["FM-1"],
+    "flash": ["856014", "B36014"],
+    "features": ["bluetooth-midi", "bluetooth-midi-devices", "usb-audio-in", "usb-audio-out", "second-core", "velocity", "pressure", "screen-reader"]
+  },
+  "credits": "Built on fm1-base and felucca-bsp (from Felucca by Leo Kuroshita, Hügelton Instruments). Public-domain classical scores from the Mutopia Project."
+}
