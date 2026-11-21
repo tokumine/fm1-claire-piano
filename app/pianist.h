@@ -147,6 +147,8 @@ void pianist_mod_label(char *out, uint32_t cap);
 uint8_t pianist_active_mod_mask(void);
 uint8_t pianist_key_guide_bright(uint8_t key_idx, int8_t oct_shift, const keys_cfg_t *kcfg);
 uint8_t pianist_user_dirty(uint8_t slot);
+const char *pianist_fx_badge(void);
+uint32_t pianist_active_fx_mask(void);
 void pianist_clear_dirty(uint8_t slot);
 user_song_t *pianist_user_buf(uint8_t slot);
 const pianist_vis_t *pianist_vis(void);

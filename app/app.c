@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* CLAIR FM v2 — Pure Calibrated FM Grand Piano, 86-Piece Repertoire Pianist,
- * Tap Pianist & Real-Piano Chord Mode for M-VAVE FM-1.
+/* PIANOLA — Tap-Played Physical-Modal Grand Piano, 87-Roll Classical Library,
+ * Basic Piano & Chord Mode for M-VAVE FM-1.
  */
 #include "fastmath.h"
 #include "dsp_piano.h"
 #include "pianist.h"
 
-#define SET_MAGIC 0x434C5033u /* "CLP3" */
+#define SET_MAGIC 0x504E4C31u /* "PNL1" */
 
 enum { PAGE_PIANIST = 0, PAGE_BODY = 1, PAGE_HALL = 2, PAGE_KEYS = 3, PAGE_COUNT = 4 };
 enum { SCENE_PIANIST = 0, SCENE_GRAND = 1, SCENE_TAPE = 2, SCENE_COUNT = 3 };
@@ -44,7 +44,7 @@ static const char *const STR_NAMES[4]              = {"PURE", "AGED", "HONKY", "
 static const char *const ACT_NAMES[4]              = {"LIGHT", "MED", "HEAVY", "NOISY"};
 static const char *const ROOM_NAMES[4]             = {"PARLR", "RECIT", "HALL", "CATHD"};
 static const char *const SEAT_NAMES[4]             = {"BENCH", "FRONT", "BALCN", "BACK"};
-static const char *const KEYMD_NAMES[KEYMD_COUNT]  = {"PIANO", "CHORD", "TAP"};
+static const char *const KEYMD_NAMES[KEYMD_COUNT]  = {"PIANO", "CHORD", "PIANOLA"};
 static const char *const MOD_NAMES[MOD_MODE_COUNT] = {"AUTO", "LOCK", "HOLD"};
 static const char *const SPREAD_NAMES[SPREAD_COUNT]= {"CLOSE", "OPEN", "ROLL"};
 static const char *const GUIDE_NAMES[3]            = {"OFF", "SCALE", "CHORD"};
@@ -193,7 +193,7 @@ static void settings_defaults(void)
     set.piano.action = ACT_MEDIUM;
     set.piano.room = ROOM_HALL;
     set.piano.seat = SEAT_FRONT;
-    set.keys.key_mode = KEYMD_PIANO;
+    set.keys.key_mode = KEYMD_TAP;
     set.keys.mod_mode = MOD_AUTO;
     set.keys.spread = SPREAD_OPEN;
     set.keys.guide_led = 2; /* CHORD */
@@ -223,7 +223,7 @@ void app_init(void)
         set.piano.action &= 3u;
         set.piano.room &= 3u;
         set.piano.seat &= 3u;
-        if (set.keys.key_mode >= KEYMD_COUNT) set.keys.key_mode = KEYMD_PIANO;
+        if (set.keys.key_mode >= KEYMD_COUNT) set.keys.key_mode = KEYMD_TAP;
         if (set.keys.mod_mode >= MOD_MODE_COUNT) set.keys.mod_mode = MOD_AUTO;
         if (set.keys.spread >= SPREAD_COUNT) set.keys.spread = SPREAD_OPEN;
         if (set.keys.guide_led > 2u) set.keys.guide_led = 2u;
@@ -427,7 +427,7 @@ static void input(void)
         } else if (k == B_FX || k == B_HOME) {
             set.page = PAGE_PIANIST;
             set_dirty = 1;
-            app_say("PIANIST", "");
+            app_say("PIANOLA", "ROLL");
         } else if (k == B_SEL) {
             set.page = PAGE_BODY;
             set_dirty = 1;
@@ -457,7 +457,7 @@ static void input(void)
         }
     }
 
-    /* LFO tap: open KEYS deck; if already on KEYS, toggle CHORD <-> PIANO; hold 700ms = clear modifier locks */
+    /* LFO tap: open KEYS deck; if already on KEYS, toggle CHORD <-> PIANOLA; hold 700ms = clear modifier locks */
     if (ui.lfo_t) {
         if (btn & (1u << B_LFO)) {
             if (now - ui.lfo_t >= 700u) {
@@ -472,7 +472,7 @@ static void input(void)
                 set_dirty = 1;
                 app_say("KEYS", KEYMD_NAMES[set.keys.key_mode]);
             } else {
-                set.keys.key_mode = (set.keys.key_mode == KEYMD_CHORD) ? KEYMD_PIANO : KEYMD_CHORD;
+                set.keys.key_mode = (set.keys.key_mode == KEYMD_CHORD) ? KEYMD_TAP : KEYMD_CHORD;
                 dsp_piano_all_off();
                 set_dirty = 1;
                 app_say("KEY MODE", KEYMD_NAMES[set.keys.key_mode]);
@@ -480,7 +480,7 @@ static void input(void)
         }
     }
 
-    /* ARP tap: toggle Tap Pianist (TAP <-> PIANO); hold 450ms: toggle Sustain Pedal */
+    /* ARP tap: toggle PIANOLA (tap-play) <-> BASIC PIANO; hold 450ms: toggle Sustain Pedal */
     if (ui.arp_t) {
         if (btn & (1u << B_ARP)) {
             if (now - ui.arp_t >= 450u) {
@@ -494,7 +494,7 @@ static void input(void)
             set.keys.key_mode = (set.keys.key_mode == KEYMD_TAP) ? KEYMD_PIANO : KEYMD_TAP;
             dsp_piano_all_off();
             set_dirty = 1;
-            app_say(set.keys.key_mode == KEYMD_TAP ? "TAP PIANIST" : "PIANO KEYS", pianist_song_name(set.song_idx));
+            app_say(set.keys.key_mode == KEYMD_TAP ? "PIANOLA" : "BASIC PIANO", pianist_song_name(set.song_idx));
         }
     }
 
@@ -706,10 +706,17 @@ static void draw_scene_pianist(const pianist_vis_t *vis)
     if (((ui.anim_tick + 7u) & 15u) < 12u) cv_pset(49, 28, OP_CYAN);
     cv_pset(22, 48, OP_AMBER);
 
-    /* Top-right stage badge: TAP mode or active chord */
+    /* Top-right stage badge: LIVE FX during playback, PIANOLA when stopped in tap mode, else chord */
     if (set.keys.key_mode == KEYMD_TAP) {
-        cv_rect(170, 6, 62, 14, OP_AMBER);
-        cv_text(174, 8, &FONT_T, "TAP KEYS", OP_INK);
+        if (vis->mode == PLAY_RUN) {
+            const char *fx = pianist_fx_badge();
+            uint8_t on = fx[0] != 0;
+            cv_rect(164, 6, 68, 14, on ? OP_CORAL : OP_CYAN);
+            cv_text(168, 8, &FONT_T, on ? fx : "LIVE FX", OP_INK);
+        } else {
+            cv_rect(170, 6, 62, 14, OP_AMBER);
+            cv_text(177, 8, &FONT_T, "PIANOLA", OP_INK);
+        }
     } else {
         cv_rect(170, 6, 62, 14, card);
         cv_text(174, 8, &FONT_T, pianist_chord_badge(), OP_MINT);
@@ -929,10 +936,10 @@ static void draw(void)
         int32_t x = cv_text(8, 8, &FONT_B, ui.msg[0], OP_CORAL);
         cv_text(x + 8, 8, &FONT_B, ui.msg[1], fg);
     } else {
-        const char *st = vis->mode == PLAY_RUN ? "PLAY" :
+        const char *st = vis->mode == PLAY_RUN ? "AUTO" :
                          vis->mode == PLAY_REC ? "REC" :
                          vis->mode == PLAY_REC_ARMED ? "ARM" :
-                         set.keys.key_mode == KEYMD_TAP ? "TAP" : "STOP";
+                         set.keys.key_mode == KEYMD_TAP ? "TAP" : "KEYS";
         uint16_t stc = vis->mode == PLAY_RUN ? OP_MINT :
                        (vis->mode == PLAY_REC || vis->mode == PLAY_REC_ARMED) ? OP_CORAL :
                        set.keys.key_mode == KEYMD_TAP ? OP_AMBER : dim;
@@ -977,7 +984,7 @@ static void draw(void)
     cv_rect(0, 0, 240, 1, line);
 
     {
-        static const char *const PNAMES[4] = {"PIAN", "BODY", "HALL", "KEYS"};
+        static const char *const PNAMES[4] = {"ROLL", "BODY", "HALL", "KEYS"};
         static const uint16_t PCOL[4] = {OP_CORAL, OP_CYAN, OP_MINT, OP_AMBER};
         int32_t tx = 4;
         for (i = 0; i < 4; i++) {
@@ -997,7 +1004,10 @@ static void draw(void)
         text_cat(mb, ml);
         cv_text(234 - text_w(&FONT_T, mb), 3, &FONT_T, mb, OP_AMBER);
     } else if (set.keys.key_mode == KEYMD_TAP) {
-        cv_text(234 - text_w(&FONT_T, "TAP PIANIST"), 3, &FONT_T, "TAP PIANIST", OP_AMBER);
+        const char *fx = pianist_fx_badge();
+        const char *sub = vis->mode == PLAY_RUN ? (fx[0] ? fx : "LIVE FX") : "TAP TO PLAY";
+        uint16_t subc = vis->mode == PLAY_RUN ? (fx[0] ? OP_CORAL : OP_CYAN) : OP_AMBER;
+        cv_text(234 - text_w(&FONT_T, sub), 3, &FONT_T, sub, subc);
     } else {
         char ob[16], nb[8];
         ob[0] = 'O'; ob[1] = set.octave < 0 ? '-' : '+';
@@ -1069,13 +1079,17 @@ static void draw(void)
         static const uint8_t WK[16] = PLAT_WHITE_KEYS, BK[11] = PLAT_BLACK_KEYS;
         static const uint8_t AT[11] = {0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 14};
         uint8_t mods = pianist_active_mod_mask();
+        uint32_t fxm = pianist_active_fx_mask();
+        uint8_t live_fx = (set.keys.key_mode == KEYMD_TAP && vis->mode == PLAY_RUN) ? 1u : 0u;
         for (i = 0; i < 16; i++) {
             uint8_t k = WK[i];
             int32_t note = 53 + (int32_t)k + 12 * set.octave;
             uint8_t p_on = (note >= PIANO_M_MIN && note <= PIANO_M_MAX) ? vis->pianist_key[note - PIANO_M_MIN] > 50u : 0u;
             uint8_t u_on = (ui.keys >> k) & 1u;
             uint16_t c = u_on ? OP_MINT : p_on ? OP_CYAN : card;
-            if (set.keys.key_mode == KEYMD_CHORD && k < 7u) {
+            if (live_fx) {
+                c = (fxm & (1u << k)) ? (k < 12u ? OP_CORAL : OP_AMBER) : (k < 12u ? RGB(58, 36, 38) : RGB(30, 44, 54));
+            } else if (set.keys.key_mode == KEYMD_CHORD && k < 7u) {
                 uint8_t bit = (uint8_t)(1u << k);
                 c = (mods & bit) ? OP_AMBER : RGB(62, 54, 34);
             }
@@ -1087,7 +1101,9 @@ static void draw(void)
             uint8_t p_on = (note >= PIANO_M_MIN && note <= PIANO_M_MAX) ? vis->pianist_key[note - PIANO_M_MIN] > 50u : 0u;
             uint8_t u_on = (ui.keys >> k) & 1u;
             uint16_t c = u_on ? OP_CORAL : p_on ? OP_AMBER : line;
-            if (set.keys.key_mode == KEYMD_CHORD && k < 7u) {
+            if (live_fx) {
+                c = (fxm & (1u << k)) ? (k < 12u ? OP_CORAL : OP_AMBER) : (k < 12u ? RGB(74, 42, 46) : RGB(40, 58, 72));
+            } else if (set.keys.key_mode == KEYMD_CHORD && k < 7u) {
                 uint8_t bit = (uint8_t)(1u << k);
                 c = (mods & bit) ? OP_CORAL : RGB(78, 44, 44);
             }
@@ -1173,6 +1189,7 @@ int app_expect(const char *what, int *got)
     else if (str_eq(what, "key_mode")) *got = (int)set.keys.key_mode;
     else if (str_eq(what, "spread")) *got = (int)set.keys.spread;
     else if (str_eq(what, "mods")) *got = (int)pianist_active_mod_mask();
+    else if (str_eq(what, "fx_mask")) *got = (int)pianist_active_fx_mask();
     else if (str_eq(what, "note_idx")) *got = (int)vis->note_idx;
     else if (str_eq(what, "bar")) *got = (int)vis->bar;
     else if (str_eq(what, "voices")) *got = (int)dsp_piano_active_count();

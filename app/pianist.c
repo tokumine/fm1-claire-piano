@@ -76,7 +76,42 @@ static uint32_t jam_clock_ms;
 static uint8_t key_notes[27][8];
 static uint8_t key_note_cnt[27];
 
-/* Recording state */
+/* Live Performance FX & Pianist Flourish state (active during PLAY_RUN in KEYMD_TAP) */
+static uint32_t fx_held_mask;
+static uint8_t fx_last_key;
+static uint8_t fx_splice_valid;
+static float fx_splice_ms;
+static uint32_t fx_splice_idx;
+static float fx_splice_next_ms;
+static uint32_t fx_splice_ped;
+static float fx_brake_mul;
+static float fx_hold_timer_ms;
+static uint8_t fx_hold_step;
+static uint8_t fx_last_vel;
+
+static const char *const LIVE_FX_NAMES[27] = {
+    "HALF 0.5X", "BRAKE", "FAST 1.5X", "FREEZE",
+    "RPT 1/2", "RPT 1/4", "RPT 1/8", "STACCATO",
+    "UNA FELT", "SWELL FF", "OCT -1", "OCT +1",
+    "BASS OCT", "PEDAL 5TH", "ARP UP", "ARP DN",
+    "HARP RUN", "ROLL CHD", "TRILL", "TURN",
+    "MORDENT", "TREMOLO", "SHIMMER", "GRACE 9",
+    "OCT MEL", "CADENZA", "GLISS"
+};
+
+#define FX_BIT_HALF   (1u << 0)
+#define FX_BIT_BRAKE  (1u << 1)
+#define FX_BIT_FAST   (1u << 2)
+#define FX_BIT_FREEZE (1u << 3)
+#define FX_BIT_RPT2   (1u << 4)
+#define FX_BIT_RPT4   (1u << 5)
+#define FX_BIT_RPT8   (1u << 6)
+#define FX_BIT_STACC  (1u << 7)
+#define FX_BIT_FELT   (1u << 8)
+#define FX_BIT_SWELL  (1u << 9)
+#define FX_BIT_OCTDN  (1u << 10)
+#define FX_BIT_OCTUP  (1u << 11)
+#define FX_LOOP_MASK  (FX_BIT_FREEZE | FX_BIT_RPT2 | FX_BIT_RPT4 | FX_BIT_RPT8)
 static uint32_t rec_sample;
 static uint32_t rec_last_on_sample;
 static int16_t rec_open_idx[128];
@@ -389,8 +424,12 @@ static void reset_playback_pos(void)
     ped_idx = 0;
     score_pedal_down = 0;
     next_note_ms = act_nn > 0u ? (float)get_note_dt_ms(0u) : 0.0f;
+    fx_held_mask = 0u;
+    fx_splice_valid = 0u;
+    fx_brake_mul = 1.0f;
+    fx_hold_timer_ms = 0.0f;
+    fx_hold_step = 0u;
 }
-
 void pianist_init(void)
 {
     uint32_t i;
@@ -536,13 +575,20 @@ void pianist_play_toggle(void)
     }
     if (vis.mode == PLAY_RUN) {
         vis.mode = PLAY_STOP;
+        fx_held_mask = 0u;
+        fx_splice_valid = 0u;
+        fx_brake_mul = 1.0f;
         dsp_piano_all_off();
         clear_sched();
     } else {
         if (vis.note_idx >= vis.total_notes && vis.total_notes > 0u)
             reset_playback_pos();
-        if (vis.total_notes > 0u)
+        if (vis.total_notes > 0u) {
             vis.mode = PLAY_RUN;
+            fx_held_mask = 0u;
+            fx_splice_valid = 0u;
+            fx_brake_mul = 1.0f;
+        }
     }
     plat_unlock(f);
 }
@@ -853,6 +899,170 @@ static void update_score_pedal_at(float pos_ms, const pianist_cfg_t *perf)
         }
     }
 }
+/* Quantize a target MIDI pitch to the nearest in-scale note from active cur_scale_mask */
+static uint8_t quantize_in_scale(int32_t pitch)
+{
+    int32_t best = pitch, d;
+    if (pitch < PIANO_M_MIN) pitch = PIANO_M_MIN;
+    if (pitch > PIANO_M_MAX) pitch = PIANO_M_MAX;
+    for (d = 0; d <= 6; d++) {
+        int32_t up = pitch + d;
+        int32_t dn = pitch - d;
+        if (up <= PIANO_M_MAX && (cur_scale_mask & (1u << (up % 12)))) { best = up; break; }
+        if (dn >= PIANO_M_MIN && (cur_scale_mask & (1u << (dn % 12)))) { best = dn; break; }
+    }
+    return (uint8_t)clamp(best, PIANO_M_MIN, PIANO_M_MAX);
+}
+
+/* Step N diatonic degrees up or down from a base pitch using cur_scale_mask */
+static uint8_t step_in_scale(uint8_t base, int32_t steps)
+{
+    int32_t p = base;
+    int32_t dir = steps >= 0 ? 1 : -1;
+    int32_t rem = steps >= 0 ? steps : -steps;
+    while (rem > 0) {
+        p += dir;
+        if (p < PIANO_M_MIN) { p = PIANO_M_MIN; break; }
+        if (p > PIANO_M_MAX) { p = PIANO_M_MAX; break; }
+        if (cur_scale_mask & (1u << (p % 12))) rem--;
+    }
+    return (uint8_t)p;
+}
+
+/* Build an ordered 4-note chord tone pool anchored around octave base_oct (e.g. 48, 60, 72) */
+static void active_chord_notes(int32_t base_oct, uint8_t out[4])
+{
+    uint32_t i;
+    for (i = 0; i < 4u; i++) {
+        int32_t p = base_oct + (int32_t)cur_chord_pcs[i];
+        if (i > 0u && p <= (int32_t)out[i - 1u]) p += 12;
+        out[i] = (uint8_t)clamp(p, PIANO_M_MIN, PIANO_M_MAX);
+    }
+}
+
+/* Trigger an in-tune, tempo-synced pianist flourish (keys 12..26 during PLAY_RUN) */
+static void trigger_live_flourish(uint8_t key_idx, uint8_t vel, const piano_cfg_t *pcfg, const pianist_cfg_t *perf)
+{
+    uint8_t ch_lo[4], ch_hi[4];
+    uint8_t notes[6];
+    uint32_t n = 0, i;
+    float tempo_scale = 100.0f / fm_maxf(50.0f, (float)perf->tempo_pct);
+    float step_ms = 55.0f * tempo_scale;
+    uint32_t dur_ms = (uint32_t)(320.0f * tempo_scale);
+    uint8_t soft = perf->soft_pedal | ((fx_held_mask & FX_BIT_FELT) ? 1u : 0u);
+    uint8_t fv = (uint8_t)clamp((int32_t)vel - 8, 28, 120);
+    uint8_t anchor = quantize_in_scale(60 + (int32_t)cur_root);
+
+    active_chord_notes(48, ch_lo);
+    active_chord_notes(60, ch_hi);
+
+    switch (key_idx) {
+    case 12: /* BASS OCT */
+        notes[0] = (uint8_t)clamp(36 + (int32_t)cur_root, 24, 52);
+        notes[1] = (uint8_t)clamp(48 + (int32_t)cur_root, 36, 64);
+        n = 2; step_ms = 14.0f; dur_ms = (uint32_t)(900.0f * tempo_scale);
+        break;
+    case 13: /* PEDAL 5TH */
+        notes[0] = (uint8_t)clamp(36 + (int32_t)cur_root, 24, 52);
+        notes[1] = quantize_in_scale((int32_t)notes[0] + 7);
+        notes[2] = (uint8_t)clamp((int32_t)notes[0] + 12, 36, 64);
+        n = 3; step_ms = 24.0f; dur_ms = (uint32_t)(850.0f * tempo_scale);
+        break;
+    case 14: /* ARP UP */
+        notes[0] = ch_lo[0]; notes[1] = ch_lo[1]; notes[2] = ch_lo[2];
+        notes[3] = ch_hi[0]; notes[4] = ch_hi[1]; notes[5] = ch_hi[2];
+        n = 6; step_ms = 48.0f * tempo_scale;
+        break;
+    case 15: /* ARP DN */
+        notes[0] = ch_hi[3]; notes[1] = ch_hi[2]; notes[2] = ch_hi[1];
+        notes[3] = ch_hi[0]; notes[4] = ch_lo[2]; notes[5] = ch_lo[0];
+        n = 6; step_ms = 48.0f * tempo_scale;
+        break;
+    case 16: /* HARP RUN */
+        notes[0] = anchor;
+        for (i = 1; i < 6u; i++) notes[i] = step_in_scale(notes[i - 1u], 1);
+        n = 6; step_ms = 34.0f * tempo_scale;
+        break;
+    case 17: /* ROLL CHD */
+        notes[0] = ch_lo[0]; notes[1] = ch_lo[2]; notes[2] = ch_hi[1];
+        notes[3] = ch_hi[2]; notes[4] = ch_hi[3];
+        n = 5; step_ms = 22.0f * tempo_scale; dur_ms = (uint32_t)(650.0f * tempo_scale);
+        break;
+    case 18: /* TRILL (initial strike; repeats while held in pianist_tick_block) */
+        notes[0] = step_in_scale(anchor, 4);
+        notes[1] = step_in_scale(notes[0], 1);
+        n = 2; step_ms = 62.0f * tempo_scale; dur_ms = (uint32_t)(160.0f * tempo_scale);
+        break;
+    case 19: /* TURN */
+        notes[1] = step_in_scale(anchor, 4);
+        notes[0] = step_in_scale(notes[1], 1);
+        notes[2] = step_in_scale(notes[1], -1);
+        notes[3] = notes[1];
+        n = 4; step_ms = 52.0f * tempo_scale; dur_ms = (uint32_t)(240.0f * tempo_scale);
+        break;
+    case 20: /* MORDENT */
+        notes[0] = step_in_scale(anchor, 2);
+        notes[1] = step_in_scale(notes[0], -1);
+        notes[2] = notes[0];
+        n = 3; step_ms = 38.0f * tempo_scale; dur_ms = (uint32_t)(300.0f * tempo_scale);
+        break;
+    case 21: /* TREMOLO (initial octave; alternates while held in pianist_tick_block) */
+        notes[0] = ch_hi[0];
+        notes[1] = (uint8_t)clamp((int32_t)ch_hi[0] + 12, PIANO_M_MIN, PIANO_M_MAX);
+        n = 2; step_ms = 55.0f * tempo_scale; dur_ms = (uint32_t)(170.0f * tempo_scale);
+        break;
+    case 22: /* SHIMMER */
+        notes[0] = (uint8_t)clamp((int32_t)ch_hi[0] + 12, 60, 96);
+        notes[1] = (uint8_t)clamp((int32_t)ch_hi[2] + 12, 60, 98);
+        notes[2] = (uint8_t)clamp((int32_t)ch_hi[1] + 24, 64, 102);
+        notes[3] = (uint8_t)clamp((int32_t)ch_hi[3] + 24, 68, 105);
+        n = 4; step_ms = 42.0f * tempo_scale; soft = 1u;
+        break;
+    case 23: /* GRACE 9 */
+        notes[0] = step_in_scale(ch_hi[1], 1);
+        notes[1] = ch_hi[1];
+        notes[2] = step_in_scale(ch_hi[2], 2);
+        n = 3; step_ms = 36.0f * tempo_scale; soft = 1u;
+        break;
+    case 24: /* OCT MEL */
+        notes[0] = ch_hi[0];
+        notes[1] = (uint8_t)clamp((int32_t)ch_hi[0] + 12, 60, 100);
+        notes[2] = (uint8_t)clamp((int32_t)ch_hi[2] + 12, 64, 104);
+        n = 3; step_ms = 18.0f * tempo_scale;
+        break;
+    case 25: /* CADENZA */
+        notes[0] = ch_hi[0];
+        notes[1] = step_in_scale(notes[0], 1);
+        notes[2] = step_in_scale(notes[1], 1);
+        notes[3] = step_in_scale(notes[2], 1);
+        notes[4] = step_in_scale(notes[3], 2);
+        notes[5] = step_in_scale(notes[4], 1);
+        n = 6; step_ms = 32.0f * tempo_scale;
+        break;
+    default: /* 26: GLISS */
+        notes[0] = step_in_scale(ch_hi[0], 3);
+        for (i = 1; i < 6u; i++) notes[i] = step_in_scale(notes[i - 1u], 1);
+        n = 6; step_ms = 26.0f * tempo_scale; soft = 1u;
+        break;
+    }
+
+    key_note_cnt[key_idx] = 0u;
+    for (i = 0; i < n && i < 6u; i++) {
+        uint8_t p = notes[i];
+        uint8_t nv = (uint8_t)clamp((int32_t)fv - (int32_t)(i * 3u), 24, 118);
+        uint32_t dur_s = (uint32_t)(dur_ms * 44.1f);
+        if (i == 0u) {
+            dsp_piano_note_on(p, nv, 0u, soft, pcfg);
+            sched_note_off(p, audio_sample_now + dur_s);
+            if (p >= PIANO_M_MIN && p <= PIANO_M_MAX)
+                vis.live_key[p - PIANO_M_MIN] = 255u;
+        } else {
+            uint32_t fire = audio_sample_now + (uint32_t)((float)i * step_ms * 44.1f);
+            sched_note_on(p, nv, 0u, soft, fire, dur_s);
+        }
+        key_notes[key_idx][key_note_cnt[key_idx]++] = p;
+    }
+}
 
 /* Tap Pianist: advance & perform the next chord/cluster in the loaded score at the player's tap timing & velocity! */
 static void tap_pianist_advance(uint8_t key_idx, uint8_t vel, const piano_cfg_t *pcfg, const pianist_cfg_t *perf)
@@ -862,13 +1072,6 @@ static void tap_pianist_advance(uint8_t key_idx, uint8_t vel, const piano_cfg_t 
 
     if (act_nn == 0u)
         return;
-
-    /* Pause auto-play if running so the player takes over seamlessly */
-    if (vis.mode == PLAY_RUN) {
-        vis.mode = PLAY_STOP;
-        clear_sched();
-    }
-
     if (vis.note_idx >= act_nn)
         reset_playback_pos();
 
@@ -988,6 +1191,23 @@ void pianist_key_event(uint8_t key_idx, uint8_t down, uint8_t vel, int8_t oct_sh
 
     if (!down) {
         uint8_t i;
+        uint32_t bit = 1u << key_idx;
+        if (kcfg->key_mode == KEYMD_TAP && (fx_held_mask & bit)) {
+            uint32_t prev_loop = fx_held_mask & FX_LOOP_MASK;
+            fx_held_mask &= ~bit;
+            if ((fx_held_mask & FX_BIT_BRAKE) == 0u)
+                fx_brake_mul = 1.0f;
+            /* Clean return to the exact splice point when loop/freeze keys are released! */
+            if (prev_loop && (fx_held_mask & FX_LOOP_MASK) == 0u && fx_splice_valid) {
+                score_pos_ms = fx_splice_ms;
+                vis.note_idx = fx_splice_idx;
+                next_note_ms = fx_splice_next_ms;
+                ped_idx = fx_splice_ped;
+                fx_splice_valid = 0u;
+                clear_sched();
+                dsp_piano_all_off();
+            }
+        }
         for (i = 0; i < key_note_cnt[key_idx]; i++) {
             uint8_t p = key_notes[key_idx][i];
             dsp_piano_note_off(p);
@@ -1012,11 +1232,32 @@ void pianist_key_event(uint8_t key_idx, uint8_t down, uint8_t vel, int8_t oct_sh
     }
 
     if (kcfg->key_mode == KEYMD_TAP) {
-        tap_pianist_advance(key_idx, vel, pcfg, perf);
+        if (vis.mode == PLAY_RUN) {
+            uint32_t bit = 1u << key_idx;
+            uint32_t was_loop = fx_held_mask & FX_LOOP_MASK;
+            fx_held_mask |= bit;
+            fx_last_key = key_idx;
+            fx_last_vel = vel;
+            if ((bit & FX_LOOP_MASK) && !was_loop) {
+                fx_splice_valid = 1u;
+                fx_splice_ms = score_pos_ms;
+                fx_splice_idx = vis.note_idx;
+                fx_splice_next_ms = next_note_ms;
+                fx_splice_ped = ped_idx;
+            }
+            if (bit & FX_BIT_BRAKE)
+                fx_brake_mul = 1.0f;
+            if (key_idx >= 12u) {
+                fx_hold_timer_ms = 0.0f;
+                fx_hold_step = 0u;
+                trigger_live_flourish(key_idx, vel, pcfg, perf);
+            }
+        } else {
+            tap_pianist_advance(key_idx, vel, pcfg, perf);
+        }
         plat_unlock(f);
         return;
     }
-
     if (kcfg->key_mode == KEYMD_CHORD) {
         uint8_t notes[8], cnt, i;
         uint8_t mods = (uint8_t)(mod_lock_mask | mod_held_mask);
@@ -1147,12 +1388,64 @@ void pianist_tick_block(uint32_t n_frames, const pianist_cfg_t *perf, const pian
         return;
     }
 
+    /* Active held trill / tremolo live pianist flourishes during PLAY_RUN */
+    if (fx_held_mask & ((1u << 18) | (1u << 21))) {
+        float tempo_scale = 100.0f / fm_maxf(50.0f, (float)perf->tempo_pct);
+        float step_period = ((fx_held_mask & (1u << 18)) ? 74.0f : 68.0f) * tempo_scale;
+        fx_hold_timer_ms += block_ms;
+        if (fx_hold_timer_ms >= step_period) {
+            uint8_t base = quantize_in_scale(60 + (int32_t)cur_root);
+            uint8_t p;
+            uint8_t fv = (uint8_t)clamp((int32_t)fx_last_vel - 14, 24, 110);
+            fx_hold_timer_ms -= step_period;
+            fx_hold_step ^= 1u;
+            if (fx_held_mask & (1u << 18)) {
+                uint8_t t0 = step_in_scale(base, 4);
+                p = fx_hold_step ? step_in_scale(t0, 1) : t0;
+            } else {
+                uint8_t ch_hi[4];
+                active_chord_notes(60, ch_hi);
+                p = fx_hold_step ? (uint8_t)clamp((int32_t)ch_hi[0] + 12, PIANO_M_MIN, PIANO_M_MAX) : ch_hi[0];
+            }
+            dsp_piano_note_on(p, fv, 0u, perf->soft_pedal, pcfg);
+            sched_note_off(p, audio_sample_now + (uint32_t)(step_period * 1.4f * 44.1f));
+            if (p >= PIANO_M_MIN && p <= PIANO_M_MAX)
+                vis.live_key[p - PIANO_M_MIN] = 255u;
+        }
+    }
+
     {
         float t_sec = score_pos_ms * 0.001f;
         float rub = (float)perf->rubato * 0.01f;
         float drift = 0.055f * rub * (0.65f * fm_sinf(t_sec * 0.43f) + 0.35f * fm_sinf(t_sec * 0.19f + 1.1f));
-        float tempo_mul = fm_clampf(((float)perf->tempo_pct * 0.01f) * (1.0f + drift), 0.35f, 1.85f);
+        float fx_mul = 1.0f;
+        float tempo_mul;
+        if (fx_held_mask & FX_BIT_FREEZE) {
+            fx_mul = 0.0f;
+        } else {
+            if (fx_held_mask & FX_BIT_HALF) fx_mul *= 0.50f;
+            if (fx_held_mask & FX_BIT_FAST) fx_mul *= 1.50f;
+            if (fx_held_mask & FX_BIT_BRAKE) {
+                fx_brake_mul = fm_maxf(0.24f, fx_brake_mul * 0.982f);
+                fx_mul *= fx_brake_mul;
+            }
+        }
+        tempo_mul = fm_clampf(((float)perf->tempo_pct * 0.01f) * (1.0f + drift) * fx_mul, 0.0f, 2.40f);
         score_pos_ms += block_ms * tempo_mul;
+        /* PO-style beat repeat loops cleanly around the captured splice point */
+        if (fx_splice_valid && (fx_held_mask & (FX_BIT_RPT2 | FX_BIT_RPT4 | FX_BIT_RPT8))) {
+            float tempo_scale = 100.0f / fm_maxf(50.0f, (float)perf->tempo_pct);
+            float win_ms = (fx_held_mask & FX_BIT_RPT8) ? 220.0f :
+                           (fx_held_mask & FX_BIT_RPT4) ? 450.0f : 900.0f;
+            win_ms *= tempo_scale;
+            if (score_pos_ms >= fx_splice_ms + win_ms) {
+                score_pos_ms = fx_splice_ms;
+                vis.note_idx = fx_splice_idx;
+                next_note_ms = fx_splice_next_ms;
+                ped_idx = fx_splice_ped;
+                clear_sched();
+            }
+        }
         vis.elapsed_ms = (uint32_t)score_pos_ms;
     }
 
@@ -1162,7 +1455,21 @@ void pianist_tick_block(uint32_t n_frames, const pianist_cfg_t *perf, const pian
         vis.bar = (uint16_t)b;
     }
 
-    update_score_pedal_at(score_pos_ms, perf);
+    if (fx_held_mask & FX_BIT_STACC) {
+        if (score_pedal_down && !live_pedal_down) {
+            score_pedal_down = 0;
+            dsp_piano_set_pedal(0u);
+            vis.pedal_down = 0u;
+        }
+    } else if (fx_held_mask & (FX_BIT_FREEZE | FX_BIT_SWELL)) {
+        if (!score_pedal_down) {
+            score_pedal_down = 1u;
+            dsp_piano_set_pedal(1u);
+            vis.pedal_down = 1u;
+        }
+    } else {
+        update_score_pedal_at(score_pos_ms, perf);
+    }
 
     while (vis.note_idx < act_nn && score_pos_ms >= next_note_ms) {
         uint8_t pitch, base_vel, role, soft_f;
@@ -1176,13 +1483,26 @@ void pianist_tick_block(uint32_t n_frames, const pianist_cfg_t *perf, const pian
         }
 
         {
-            uint8_t soft = soft_f | perf->soft_pedal;
-            uint8_t vel = apply_voicing(base_vel, role, perf->voicing);
+            uint8_t soft = soft_f | perf->soft_pedal | ((fx_held_mask & FX_BIT_FELT) ? 1u : 0u);
+            int32_t v_adj = (int32_t)apply_voicing(base_vel, role, perf->voicing);
+            uint8_t vel;
+            uint8_t play_pitch = pitch;
             float rub = (float)perf->rubato * 0.01f;
             float delay_ms = 0.0f;
             float tempo_scale = 100.0f / (float)fm_maxf(40.0f, (float)perf->tempo_pct);
             uint32_t dur_samp = (uint32_t)((float)n_dur_ms * tempo_scale * 44.1f);
-            if (dur_samp < 2200u) dur_samp = 2200u;
+
+            if (fx_held_mask & FX_BIT_FELT) v_adj -= 24;
+            if (fx_held_mask & FX_BIT_SWELL) v_adj += 22;
+            vel = (uint8_t)clamp(v_adj, 16, 125);
+            if (fx_held_mask & FX_BIT_STACC)
+                dur_samp = 3200u; /* ~72 ms crisp staccato */
+            else if (dur_samp < 2200u)
+                dur_samp = 2200u;
+            if ((fx_held_mask & FX_BIT_OCTUP) && role <= 1u && play_pitch + 12u <= PIANO_M_MAX)
+                play_pitch = (uint8_t)(play_pitch + 12u);
+            if ((fx_held_mask & FX_BIT_OCTDN) && (role == 3u || play_pitch < 58u) && play_pitch >= PIANO_M_MIN + 12u)
+                play_pitch = (uint8_t)(play_pitch - 12u);
 
             if (rub > 0.01f) {
                 if (role == 3u) delay_ms = 0.0f;
@@ -1193,20 +1513,20 @@ void pianist_tick_block(uint32_t n_frames, const pianist_cfg_t *perf, const pian
             vis.soft_on = soft;
 
             if (delay_ms < 2.5f) {
-                dsp_piano_note_on(pitch, vel, role, soft, pcfg);
+                dsp_piano_note_on(play_pitch, vel, role, soft, pcfg);
                 feed_harmony(pitch, vel, role);
-                sched_note_off(pitch, audio_sample_now + dur_samp);
-                if (pitch >= PIANO_M_MIN && pitch <= PIANO_M_MAX) {
-                    uint8_t ki = (uint8_t)(pitch - PIANO_M_MIN);
+                sched_note_off(play_pitch, audio_sample_now + dur_samp);
+                if (play_pitch >= PIANO_M_MIN && play_pitch <= PIANO_M_MAX) {
+                    uint8_t ki = (uint8_t)(play_pitch - PIANO_M_MIN);
                     vis.pianist_key[ki] = 255u;
-                    if (role == 3u || pitch < 56u)
+                    if (role == 3u || play_pitch < 56u)
                         vis.lh_pos = vis.lh_pos * 0.6f + (float)ki * 0.4f;
                     else
                         vis.rh_pos = vis.rh_pos * 0.6f + (float)ki * 0.4f;
                     vis.energy = fm_minf(1.0f, vis.energy + (role == 0u ? 0.22f : 0.10f));
                 }
             } else {
-                sched_note_on(pitch, vel, role, soft, audio_sample_now + (uint32_t)(delay_ms * 44.1f), dur_samp);
+                sched_note_on(play_pitch, vel, role, soft, audio_sample_now + (uint32_t)(delay_ms * 44.1f), dur_samp);
             }
         }
 
@@ -1214,7 +1534,6 @@ void pianist_tick_block(uint32_t n_frames, const pianist_cfg_t *perf, const pian
         if (vis.note_idx < act_nn)
             next_note_ms += (float)get_note_dt_ms(vis.note_idx);
     }
-
     if (vis.note_idx >= act_nn && score_pos_ms > (float)act_dur_ms + 1200.0f) {
         vis.mode = PLAY_STOP;
         dsp_piano_all_off();
@@ -1264,9 +1583,28 @@ void pianist_mod_label(char *out, uint32_t cap)
 
 uint8_t pianist_active_mod_mask(void) { return (uint8_t)(mod_lock_mask | mod_held_mask); }
 
+uint32_t pianist_active_fx_mask(void) { return fx_held_mask; }
+
+const char *pianist_fx_badge(void)
+{
+    if (fx_held_mask == 0u) return "";
+    if (fx_last_key < 27u && (fx_held_mask & (1u << fx_last_key)))
+        return LIVE_FX_NAMES[fx_last_key];
+    {
+        uint32_t i;
+        for (i = 0; i < 27u; i++)
+            if (fx_held_mask & (1u << i)) return LIVE_FX_NAMES[i];
+    }
+    return "";
+}
+
 uint8_t pianist_key_guide_bright(uint8_t key_idx, int8_t oct_shift, const keys_cfg_t *kcfg)
 {
     if (key_idx >= 27u) return 0u;
+    if (kcfg->key_mode == KEYMD_TAP && vis.mode == PLAY_RUN) {
+        if (fx_held_mask & (1u << key_idx)) return 255u;
+        return key_idx < 12u ? 48u : 22u;
+    }
     if (kcfg->key_mode == KEYMD_CHORD && key_idx < 7u) {
         uint8_t bit = (uint8_t)(1u << key_idx);
         if ((mod_lock_mask | mod_held_mask) & bit)

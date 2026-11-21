@@ -1,16 +1,17 @@
-# Screen reader words for Clair Piano
+# Screen reader words for Pianola
 # url: https://tokumine.github.io/fm1-claire-piano/words/
-CLAIR FM	clair piano
-PIANIST	pianist controls
+PIANOLA	pianola tap player grand piano
+ROLL	pianola roll controls
 BODY	piano body controls
 HALL	hall and stage controls
 KEYS	keyboard mode controls
 STAGE	stage view
 HARP	harp view
 TAPE	tape view
-PIANO	pure grand piano
+BASIC PIANO	basic twenty seven key grand piano
+PIANO	basic grand piano
 CHORD	chord modifier mode
-TAP	tap pianist mode
+TAP	pianola tap play mode
 TEMPO	tempo
 RUBATO	rubato
 VOICING	voicing

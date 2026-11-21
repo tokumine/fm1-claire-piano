@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include "plat.h"
 
-#define APP_NAME "CLAIR FM"
+#define APP_NAME "PIANOLA"
 #define APP_SPLASH_RGB RGB(232, 93, 74)
 #define APP_BLOCK 256u
 #define APP_TOUCH

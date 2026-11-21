@@ -1,9 +1,9 @@
 {
-  "what": "A physical-modal concert grand piano for the FM-1: 16 stiff-string partials per voice, 3-string unison beating, soundboard and bridge resonance, damper pedal physics, 87 classical pieces, Tap Pianist mode where any key plays the score at your touch, chord mode, and a 4-slot recorder.",
+  "what": "A tap-played modern Pianola for the FM-1. Pick from 87 classic piano rolls and tap any key to perform every phrase at your own rhythm and touch — or hit PLAY and punch in live Pocket-Operator-style tempo, repeat, and in-key pianist flourish FX on the keys. Toggle off anytime for Basic Piano.",
   "author": "Simon Tokumine",
   "kinds": ["synth"],
   "cheat": "https://github.com/tokumine/fm1-claire-piano/blob/main/app/docs/MANUAL.md",
   "image": "docs/card.png",
-  "color": "#E85D4A",
+  "color": "#F4B942",
   "sounds": "none – all synthesised"
 }

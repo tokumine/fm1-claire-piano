@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
-# Clair Piano release: built from source on GitHub by zvenson/fm1-build@v1 so The Firmware Hub
+# Pianola release: built from source on GitHub by zvenson/fm1-build@v1 so The Firmware Hub
 # verifies and marks the packages as "Built from source on GitHub". Also builds and deploys the
 # GitHub Pages site (browser emulator, Web MIDI installer, manual, screen reader words) using
 # the attested release package.
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: clair-piano-release-${{ github.ref }}
+  group: pianola-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TITLE: Clair Piano
+          TITLE: Pianola
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" != refs/tags/* ]]; then exit 0; fi
@@ -54,7 +54,7 @@ jobs:
       tests-block: true
       build: |
         set -euo pipefail
-        pkg=clair_piano
+        pkg=pianola
         git submodule update --init --recursive
         sudo apt-get install -y -qq libfribidi0
         python3 -c "from PIL import features; assert features.check('raqm'), 'Pillow without raqm'"
@@ -84,7 +84,7 @@ jobs:
         cp app/build/firmware.json build/release-assets/
       test: |
         set -euo pipefail
-        pkg=clair_piano
+        pkg=pianola
         [ -f "app/build/$pkg.fwsc" ]
         sh tests/run_tests.sh
       packages: build/release-assets/*
@@ -151,7 +151,7 @@ jobs:
         run: |
           set +u; source "$RUNNER_TEMP/emsdk/emsdk_env.sh"; set -u
           version=${GITHUB_REF_NAME#v}
-          PKG="build/attested/build/release-assets/clair_piano-${version}.fwsc"
+          PKG="build/attested/build/release-assets/pianola-${version}.fwsc"
           python3 base/tools/build.py app --web --release "$version"
           python3 base/tools/make_site.py app "$PKG" "$version" app/build/site
           SHA=$(git rev-parse --short HEAD)
@@ -160,5 +160,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "Site for clair_piano $version (from $SHA)"
+          git commit -q -m "Site for pianola $version (from $SHA)"
           git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
