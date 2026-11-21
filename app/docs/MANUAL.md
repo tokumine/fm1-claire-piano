@@ -47,15 +47,15 @@ Every flourish locks to the roll's live detected chord & scale and scales its ti
   - **Upper 20 keys (`C4..G5`):** Voiced concert grand chords (`CLOSE`, `OPEN` wide voicing, or `ROLL` pianist arpeggio via `K3`).
 - **Headphones & USB Audio:** Plugging in headphones (or recording over USB Audio) automatically switches from speaker voicing to full-range 3D stereo harp width and deep sub-bass.
 
-## 3. Choosing Rolls & Recording Your Own
+## 4. Choosing Rolls & Recording Your Own
 
 - **Browse Rolls (`PRESET` encoder):** Step through 87 public-domain piano rolls (Debussy, Satie, Chopin, Beethoven, Bach, Mozart, Schubert, Schumann, Brahms, Grieg, Joplin) plus 4 User Slots (`USER SONG 1..4`).
 - **Composer Shelves (`ALGO` encoder):** Filter by `ALL`, `DEBUSSY/SATIE`, `CHOPIN`, `BEETHOVEN`, `BAROQUE`, `CLASSICAL`, `ROMANTIC`, `RAGTIME/WALTZ`, or `USER SLOTS`.
 - **Scrub Bars (`SELECT` encoder):** Jump backward or forward bar-by-bar at any time.
 - **Rewind (`SEQ`):** Stop auto-play, rewind the current roll to bar 1, and silence ringing strings.
-- **Record a Custom Roll (`REC` + `SAVE`):** Press `REC` to arm a User Slot (switch to Basic Piano or Chord Mode or play an external MIDI keyboard — recording starts on your first note). Press `REC` or `SEQ` to finish, then press `SAVE` to store your roll in flash. You can then tap-play your own recording in Pianola mode! (Hold `EDIT` 1s on a User Slot to clear it.)
+- **Record a Custom Roll (`REC` + `SAVE`):** Press `REC` to arm a User Slot (switch to Basic Piano or Chord Mode or play an external MIDI keyboard — recording starts on your first note). Press `REC` or `SEQ` to finish, then press `SAVE` to store your roll in flash. You can then tap-play or live-FX your own recording in Pianola mode! (Hold `EDIT` 1s on a User Slot to clear it.)
 
-## 4. The Four Control Decks
+## 5. The Four Control Decks
 
 | Button | Deck | Knob 1 (`K1`) | Knob 2 (`K2`) | Knob 3 (`K3`) | Knob 4 (`K4`) |
 |---|---|---|---|---|---|
@@ -64,7 +64,7 @@ Every flourish locks to the roll's live detected chord & scale and scales its ti
 | **`ENV`** | **HALL** | `ROOM` (`PARLR`..`CATHD`) | `SEAT` (`BENCH`..`BACK`) | `SOFT` (`AUTO` / `UNA`) | `GUIDE` (`OFF`, `SCALE`, `CHORD`) |
 | **`LFO`** | **KEYS** | `KEYMD` (`PIANO`, `CHORD`, `PIANOLA`) | `MODS` (`AUTO`, `LOCK`, `HOLD`) | `SPREAD` (`CLOSE`, `OPEN`, `ROLL`) | `GUIDE` (`OFF`, `SCALE`, `CHORD`) |
 
-## 5. Views, Themes & MIDI / Bluetooth
+## 6. Views, Themes & MIDI / Bluetooth
 
 - **Pixel-Art Views (`EDIT`):** Cycle **STAGE** (animated moonlit concert grand), **HARP** (88 live strings + damper rail), and **TAPE** (dual-reel roll transport + polyphony meter).
 - **Theme & Bluetooth (`GLO`):** Tap `GLO` to switch between **OP-Dark** and **OP-Paper** themes. Hold `GLO` 1s to toggle Bluetooth MIDI on/off; hold `REC` 1s to scan/pair a nearby BLE MIDI keyboard (select with `ALGO`, hold `REC` to connect).

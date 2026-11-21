@@ -4,7 +4,7 @@
 
 Switch **Pianola** off with a single tap of `ARP` whenever you want to break out into a **Basic 27-key Grand Piano**, or jump into one-finger **Chord Mode** (`LFO`) and a **4-slot Roll Recorder** (`REC`). Every single note is synthesised in real time across both CPU cores at 396 MHz — zero audio samples, zero ROM wavetables.
 
-![Pianola Tap-Play Stage view](docs/card.png) ![Harp String Resonance view](app/docs/img/scene_grand.png) ![Chord Mode view](app/docs/img/deck_keys_chord.png)
+![Pianola Tap-Play Stage view](docs/card.png) ![Live Punch-In FX view](app/docs/img/stage_play.png) ![Harp String Resonance view](app/docs/img/scene_grand.png)
 
 - **Install on The Firmware Hub** (one-click Web MIDI): <https://thefirmwarehub.com/firmware/clairpiano/>
 - **Read the manual**: [app/docs/MANUAL.md](app/docs/MANUAL.md)
