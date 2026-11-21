@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PIANOLA: Pianola Manual</title>
+<meta name="description" content="Pianola Manual for PIANOLA, a firmware for the M-VAVE FM-1.">
+<style>
+/* paper and ink: warm white paper, ink-blue type, vermilion for what is played, mustard for asides; a shade of the
+   paper for code and callouts (CTL-1's; a firmware may restyle its site) */
+:root {
+  --paper: #fbf8f1; --sheet: #efe9dc; --rule: #ddd4c2; --ink: #1e2b5a; --muted: #5d6585;
+  --hot: #e5482e; --hot-t: #f8d3c9; --cool: #d9a21b; --cool-t: #f5e4b8;
+  --hot-ink: #c23a22;                                 /* the vermilion as text: 4.5:1 on the paper */
+  color-scheme: light;
+}
+body {
+  background: var(--paper); color: var(--ink); margin: 0;
+  font: 400 17px/1.6 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding-inline: 16px; padding-block: 32px 64px;
+}
+main { max-width: 46rem; margin: 0 auto; }
+.page > .site { max-width: 46rem; margin-inline: auto; }
+main:focus { outline: none; }
+h1, h2, h3 { font-family: inherit; text-wrap: balance; line-height: 1.2; }
+h1 { font-size: 2.2rem; font-weight: 700; margin: 0 0 .4rem; letter-spacing: .02em; }
+h2 { font-size: 1.3rem; font-weight: 700; margin: 3rem 0 .8rem; padding-top: .8rem; border-top: 2px solid var(--ink); }
+h2 .num { color: var(--hot); margin-right: .5em; font-variant-numeric: tabular-nums; }
+h3 { font-size: 1.1rem; font-weight: 700; margin: 2rem 0 .5rem; }
+p, li { max-width: 65ch; }
+p { margin: 0 0 1rem; }
+ul, ol { padding-left: 1.3rem; margin: 0 0 1rem; }
+li { margin: .2rem 0; }
+li::marker { color: var(--hot); }
+strong { font-weight: 700; }
+a { color: var(--ink); text-decoration-color: var(--hot); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { background: var(--hot-t); }
+:focus-visible { outline: 3px solid var(--hot-ink); outline-offset: 2px; }
+.skip { position: absolute; left: 16px; top: -100px; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 0 0 6px 6px; z-index: 1; }
+.skip:focus { top: 0; }
+code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .86em; }
+code { background: var(--sheet); padding: .08em .35em; border-radius: 3px; }
+pre { background: var(--sheet); border-radius: 6px; padding: 14px 16px; overflow-x: auto; line-height: 1.45; margin: 0 0 1.2rem; }
+pre code { background: none; padding: 0; font-size: inherit; }
+hr { display: none; }
+.table { overflow-x: auto; margin: 0 0 1.3rem; }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: .45rem .7rem .45rem 0; border-bottom: 1px solid var(--rule); }
+th { font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: .78rem; color: var(--muted); border-bottom: 2px solid var(--ink); }
+td:first-child { white-space: nowrap; }
+.lede { margin-bottom: 1.6rem; }
+.status { background: var(--sheet); border-radius: 6px; padding: 12px 16px; }
+.status p { margin: 0; }
+.site { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem 1.2rem; margin: 0 0 1.6rem; padding-bottom: .5rem; border-bottom: 2px solid var(--ink); }
+.site .home { font-size: 1.1rem; font-weight: 700; letter-spacing: .04em; color: var(--ink); text-decoration: none; }
+.site .home:hover { color: var(--hot-ink); background: none; }
+.site nav { margin-left: auto; display: flex; flex-wrap: wrap; gap: .2rem 1rem; font-size: .92rem; }
+.site nav a { color: var(--ink); text-underline-offset: 3px; }
+.site nav a[aria-current] { text-decoration: none; color: var(--hot-ink); }
+a.home { color: inherit; text-decoration: none; }
+a.home:hover { background: none; color: var(--hot-ink); }
+main > a.home { display: inline-block; font-size: .9rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+.callout { border-left: 4px solid var(--cool); background: var(--cool-t); padding: 10px 16px; margin: 0 0 1.2rem; max-width: 65ch; border-radius: 0 6px 6px 0; }
+.callout p { margin: 0; }
+details { background: var(--sheet); border-radius: 6px; padding: 0 16px; margin: 0 0 1.2rem; }
+details > summary { cursor: pointer; padding: 10px 0; }
+details[open] > summary { margin-bottom: .4rem; }
+details > :last-child { margin-bottom: 1rem; }
+.swatch { display: inline-block; width: .7em; height: .7em; margin-right: .4em; vertical-align: .02em; }
+nav.contents ol { columns: 2 14rem; column-gap: 2rem; padding-left: 1.3rem; }
+.figs { display: flex; flex-wrap: wrap; gap: 20px; margin: .4rem 0 1.6rem; }
+figure { margin: 0; flex: 0 1 auto; }
+figure img { display: block; max-width: 100%; height: auto; }
+figure.shot img { width: 300px; image-rendering: pixelated; border-radius: 4px; box-shadow: 0 0 0 1px var(--rule); }
+figure.wide { flex-basis: 100%; }
+figure.wide img { width: 100%; }
+figcaption { color: var(--muted); font-size: .88rem; margin-top: .4rem; max-width: 300px; }
+figure.wide figcaption { max-width: none; }
+nav.contents li { break-inside: avoid; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="page">
+<main id="content" tabindex="-1">
+<a class="home" href="../">PIANOLA</a>
+<h1>Pianola Manual</h1>
+<p><strong>Pianola</strong> is a modern tap-played player grand piano for the M-VAVE FM-1. It pairs an 87-roll classical library (plus 4 recordable user rolls) with a dual-core 396 MHz physical-modal concert grand engine: 16 stiff-string partials per voice, 3-string unison beating, longitudinal bass phantom partials, a 16-mode spatial bridge resonator, 5-band hammer/damper felt noise, sympathetic open strings, a 4-line Hadamard FDN concert hall, and a transparent stereo peak-hold limiter.</p>
+<div class="figs"><figure class="shot"><img src="img/scene_tape.png" alt="Pianola Tap-Play Stage view](img/scene_pianist.png) ![Harp String Resonance view](img/scene_grand.png) ![Tape Roll view" loading="lazy"><figcaption>Pianola Tap-Play Stage view](img/scene_pianist.png) !<a href="img/scene_grand.png">Harp String Resonance view</a> ![Tape Roll view</figcaption></figure></div>
+<h2 id="s1"><span class="num">1</span>Tap-Playing the Pianola (Default ON, When Stopped)</h2>
+<p>When Pianola powers on, <strong>Pianola mode is immediately active</strong> (amber <code>TAP</code> + <code>PIANOLA</code> badge on screen, <code>ARP</code> LED lit):</p>
+<ul><li><strong>Tap any of the 27 keys</strong> to step chord-by-chord through the loaded piano roll (<em>Clair de lune</em> is loaded first).</li><li><strong>Your timing = the phrasing:</strong> linger on a climax, rush an arpeggio, breathe between bars — every strike fires on your exact finger landing.</li><li><strong>Your touch = the dynamics:</strong> the FM-1's velocity-calibrated silicone keys scale every chord from hushed <em>pianissimo</em> to concert <em>fortissimo</em> while preserving the score's melody-over-accompaniment voicing (<code>VOICE</code> knob).</li><li><strong>Hold &amp; Release:</strong> hold a key to let its notes ring; release to lift dampers (while automatic harmonic pedalling sustains across chord tones according to <code>PEDAL</code>).</li></ul>
+<h2 id="s2"><span class="num">2</span>Live Punch-In FX &amp; Pianist Flourishes (During <code>PLAY</code>)</h2>
+<p>Press <strong><code>PLAY</code></strong> to start the roll hands-free. While playing in Pianola mode, the top-right badge switches to cyan <strong><code>LIVE FX</code></strong> and the 27 keys become a <strong>Pocket-Operator-style live performance keyboard</strong> — hold any key (or combine several!) to reshape the performance, and release to drop cleanly right back into the score at the exact splice point:</p>
+<h3 id="left-12-keys-f3-e4-po-style-time-loop-dynamics-fx">Left 12 Keys (<code>F3..E4</code>) — PO-Style Time, Loop &amp; Dynamics FX</h3>
+<div class="table" tabindex="0" role="region" aria-label="Table: Left 12 Keys (F3..E4) — PO-Style Time, Loop &amp; Dynamics FX (Key, Effect, Behavior)"><table><thead><tr><th>Key</th><th>Effect</th><th>Behavior</th></tr></thead><tbody><tr><td><code>F3</code> (<code>k0</code>)</td><td><strong><code>HALF 0.5X</code></strong></td><td>Half-time slowdown</td></tr><tr><td><code>F#3</code> (<code>k1</code>)</td><td><strong><code>BRAKE</code></strong></td><td>Mechanical/tape rubato slowdown while held</td></tr><tr><td><code>G3</code> (<code>k2</code>)</td><td><strong><code>FAST 1.5X</code></strong></td><td>Expressive 1.5× forward rush</td></tr><tr><td><code>G#3</code> (<code>k3</code>)</td><td><strong><code>FREEZE</code></strong></td><td>Sustains damper pedal &amp; pauses score at splice point; releases cleanly</td></tr><tr><td><code>A3</code> / <code>A#3</code> / <code>B3</code> (<code>k4..k6</code>)</td><td><strong><code>RPT 1/2</code> · <code>1/4</code> · <code>1/8</code></strong></td><td>Beat-synced roll repeat loops around the splice point; snaps cleanly back on release</td></tr><tr><td><code>C4</code> (<code>k7</code>)</td><td><strong><code>STACCATO</code></strong></td><td>Lifts damper pedal &amp; shortens notes to crisp ~72 ms staccato</td></tr><tr><td><code>C#4</code> (<code>k8</code>)</td><td><strong><code>UNA FELT</code></strong></td><td>Instant soft una-corda felt hush</td></tr><tr><td><code>D4</code> (<code>k9</code>)</td><td><strong><code>SWELL FF</code></strong></td><td>Engages damper pedal &amp; boosts concert fortissimo swell</td></tr><tr><td><code>D#4</code> / <code>E4</code> (<code>k10..k11</code>)</td><td><strong><code>OCT -1</code> / <code>OCT +1</code></strong></td><td>Deepens bass an octave / lifts melody an octave</td></tr></tbody></table></div>
+<h3 id="right-15-keys-f4-g5-in-key-tempo-synced-pianist-flourishes">Right 15 Keys (<code>F4..G5</code>) — In-Key &amp; Tempo-Synced Pianist Flourishes</h3>
+<p>Every flourish locks to the roll's live detected chord &amp; scale and scales its timing to <code>TEMPO</code>:</p>
+<ul><li><code>F4</code> <strong><code>BASS OCT</code></strong> · <code>F#4</code> <strong><code>PEDAL 5TH</code></strong> · <code>G4</code> <strong><code>ARP UP</code></strong> · <code>G#4</code> <strong><code>ARP DN</code></strong> · <code>A4</code> <strong><code>HARP RUN</code></strong> · <code>A#4</code> <strong><code>ROLL CHD</code></strong></li><li><code>B4</code> <strong><code>TRILL</code></strong> <em>(sustains while held)</em> · <code>C5</code> <strong><code>TURN</code></strong> · <code>C#5</code> <strong><code>MORDENT</code></strong> · <code>D5</code> <strong><code>TREMOLO</code></strong> <em>(sustains while held)</em></li><li><code>D#5</code> <strong><code>SHIMMER</code></strong> · <code>E5</code> <strong><code>GRACE 9</code></strong> · <code>F5</code> <strong><code>OCT MEL</code></strong> · <code>F#5</code> <strong><code>CADENZA</code></strong> · <code>G5</code> <strong><code>GLISS</code></strong></li></ul>
+<h2 id="s3"><span class="num">3</span>Breaking Out to Basic Piano &amp; Chord Mode</h2>
+<div class="figs"><figure class="shot"><img src="img/deck_keys_chord.png" alt="Chord Mode" loading="lazy"><figcaption>Chord Mode</figcaption></figure></div>
+<ul><li><strong>Basic Piano (<code>ARP</code> button):</strong> Tap <code>ARP</code> once to turn Pianola tap-play off and play a pure, velocity- and pressure-sensitive <strong>27-key Concert Grand Piano</strong> (<code>OCT-</code> / <code>OCT+</code> spans all 88 piano keys A0–C8). Tap <code>ARP</code> again to jump straight back to <strong>Pianola</strong> mode.</li><li><strong>Sustain Pedal (Hold <code>ARP</code> 0.45s or MIDI CC64):</strong> Latch/release the damper pedal with audible felt landing whump and open-string sigh.</li><li><strong>One-Finger Chord Mode (<code>LFO</code> button):</strong> Press <code>LFO</code> to open the <code>KEYS</code> deck (press <code>LFO</code> again to toggle <strong>Chord Mode</strong> ↔ <strong>Pianola</strong>): - <strong>Left 7 keys (<code>F3..B3</code>):</strong> Harmony modifiers — <code>5</code> (F3), <code>sus2</code> (F#3), <code>6</code> (G3), <code>sus4</code> (G#3), <code>7</code> (A3), <code>dim</code> (A#3), <code>9</code> (B3). In <code>AUTO</code> mode (<code>K2</code>), a quick tap locks/unlocks (hold <code>LFO</code> 0.7s to clear all locks) and holding a modifier while pressing a chord applies it momentarily. - <strong>Upper 20 keys (<code>C4..G5</code>):</strong> Voiced concert grand chords (<code>CLOSE</code>, <code>OPEN</code> wide voicing, or <code>ROLL</code> pianist arpeggio via <code>K3</code>).</li><li><strong>Headphones &amp; USB Audio:</strong> Plugging in headphones (or recording over USB Audio) automatically switches from speaker voicing to full-range 3D stereo harp width and deep sub-bass.</li></ul>
+<h2 id="s3"><span class="num">3</span>Choosing Rolls &amp; Recording Your Own</h2>
+<ul><li><strong>Browse Rolls (<code>PRESET</code> encoder):</strong> Step through 87 public-domain piano rolls (Debussy, Satie, Chopin, Beethoven, Bach, Mozart, Schubert, Schumann, Brahms, Grieg, Joplin) plus 4 User Slots (<code>USER SONG 1..4</code>).</li><li><strong>Composer Shelves (<code>ALGO</code> encoder):</strong> Filter by <code>ALL</code>, <code>DEBUSSY/SATIE</code>, <code>CHOPIN</code>, <code>BEETHOVEN</code>, <code>BAROQUE</code>, <code>CLASSICAL</code>, <code>ROMANTIC</code>, <code>RAGTIME/WALTZ</code>, or <code>USER SLOTS</code>.</li><li><strong>Scrub Bars (<code>SELECT</code> encoder):</strong> Jump backward or forward bar-by-bar at any time.</li><li><strong>Rewind (<code>SEQ</code>):</strong> Stop auto-play, rewind the current roll to bar 1, and silence ringing strings.</li><li><strong>Record a Custom Roll (<code>REC</code> + <code>SAVE</code>):</strong> Press <code>REC</code> to arm a User Slot (switch to Basic Piano or Chord Mode or play an external MIDI keyboard — recording starts on your first note). Press <code>REC</code> or <code>SEQ</code> to finish, then press <code>SAVE</code> to store your roll in flash. You can then tap-play your own recording in Pianola mode! (Hold <code>EDIT</code> 1s on a User Slot to clear it.)</li></ul>
+<h2 id="s4"><span class="num">4</span>The Four Control Decks</h2>
+<div class="table" tabindex="0" role="region" aria-label="Table: The Four Control Decks (Button, Deck, Knob 1 (K1), Knob 2 (K2), Knob 3 (K3), Knob 4 (K4))"><table><thead><tr><th>Button</th><th>Deck</th><th>Knob 1 (<code>K1</code>)</th><th>Knob 2 (<code>K2</code>)</th><th>Knob 3 (<code>K3</code>)</th><th>Knob 4 (<code>K4</code>)</th></tr></thead><tbody><tr><td><strong><code>HOME</code> / <code>FX</code></strong></td><td><strong>ROLL</strong></td><td><code>TEMPO</code> (50–150%)</td><td><code>RUBATO</code> (0–100%)</td><td><code>VOICE</code> (melody voicing)</td><td><code>PEDAL</code> (<code>DRY</code>, <code>HALF</code>, <code>AUTO</code>, <code>LUSH</code>)</td></tr><tr><td><strong><code>SEL</code></strong></td><td><strong>BODY</strong></td><td><code>LID</code> (<code>CLOSE</code>..<code>CONCT</code>)</td><td><code>BODY</code> (<code>UPRGT</code>..<code>CONCT</code>)</td><td><code>STRING</code> (<code>PURE</code>..<code>FELT</code>)</td><td><code>ACTION</code> (<code>LIGHT</code>..<code>NOISY</code>)</td></tr><tr><td><strong><code>ENV</code></strong></td><td><strong>HALL</strong></td><td><code>ROOM</code> (<code>PARLR</code>..<code>CATHD</code>)</td><td><code>SEAT</code> (<code>BENCH</code>..<code>BACK</code>)</td><td><code>SOFT</code> (<code>AUTO</code> / <code>UNA</code>)</td><td><code>GUIDE</code> (<code>OFF</code>, <code>SCALE</code>, <code>CHORD</code>)</td></tr><tr><td><strong><code>LFO</code></strong></td><td><strong>KEYS</strong></td><td><code>KEYMD</code> (<code>PIANO</code>, <code>CHORD</code>, <code>PIANOLA</code>)</td><td><code>MODS</code> (<code>AUTO</code>, <code>LOCK</code>, <code>HOLD</code>)</td><td><code>SPREAD</code> (<code>CLOSE</code>, <code>OPEN</code>, <code>ROLL</code>)</td><td><code>GUIDE</code> (<code>OFF</code>, <code>SCALE</code>, <code>CHORD</code>)</td></tr></tbody></table></div>
+<h2 id="s5"><span class="num">5</span>Views, Themes &amp; MIDI / Bluetooth</h2>
+<ul><li><strong>Pixel-Art Views (<code>EDIT</code>):</strong> Cycle <strong>STAGE</strong> (animated moonlit concert grand), <strong>HARP</strong> (88 live strings + damper rail), and <strong>TAPE</strong> (dual-reel roll transport + polyphony meter).</li><li><strong>Theme &amp; Bluetooth (<code>GLO</code>):</strong> Tap <code>GLO</code> to switch between <strong>OP-Dark</strong> and <strong>OP-Paper</strong> themes. Hold <code>GLO</code> 1s to toggle Bluetooth MIDI on/off; hold <code>REC</code> 1s to scan/pair a nearby BLE MIDI keyboard (select with <code>ALGO</code>, hold <code>REC</code> to connect).</li><li><strong>External MIDI:</strong> Full USB MIDI, TRS MIDI, and BLE MIDI input (notes, velocity, CC64 sustain) always plays the grand piano directly.</li></ul>
+</main>
+</div>
+</body>
+</html>
